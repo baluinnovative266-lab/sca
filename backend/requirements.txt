@@ -1,0 +1,13 @@
+fastapi
+uvicorn
+sqlalchemy
+pydantic
+python-multipart
+scikit-learn
+pandas
+numpy
+spacy
+python-jose[cryptography]
+argon2-cffi
+pypdf
+python-docx

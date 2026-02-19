@@ -1,0 +1,15 @@
+Arjun Patel
+Email: arjun@test.com
+
+Skills:
+Python
+Machine Learning
+React
+SQL
+
+Soft Skills:
+Communication
+Problem Solving
+
+Projects:
+AI Career Prediction System

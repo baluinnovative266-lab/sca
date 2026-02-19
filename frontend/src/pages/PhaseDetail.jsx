@@ -602,14 +602,14 @@ const PhaseDetail = () => {
     const handleReply = async (parentId, content) => {
         try {
             const token = localStorage.getItem('token');
-            await axios.post('http://localhost:8000/api/comments', {
+            await axios.post('/api/comments', {
                 phase_id: phaseId || 'general',
                 content,
                 parent_id: parentId,
             }, {
                 headers: { 'Authorization': `Bearer ${token}` }
             });
-            const refresh = await axios.get(`http://localhost:8000/api/comments/${phaseId || 'general'}`);
+            const refresh = await axios.get(`/api/comments/${phaseId || 'general'}`);
             setComments(refresh.data);
         } catch (err) {
             console.error("Failed to post reply", err);
@@ -620,7 +620,7 @@ const PhaseDetail = () => {
     const handleUpvote = async (commentId) => {
         try {
             await axios.post(`/api/comments/${commentId}/upvote`);
-            const refresh = await axios.get(`http://localhost:8000/api/comments/${phaseId || 'general'}`);
+            const refresh = await axios.get(`/api/comments/${phaseId || 'general'}`);
             setComments(refresh.data);
         } catch (err) {
             console.error("Failed to upvote", err);

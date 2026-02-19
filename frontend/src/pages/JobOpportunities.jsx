@@ -10,6 +10,7 @@ const JobOpportunities = () => {
     const [hiringCompanies, setHiringCompanies] = useState([]);
     const [selectedCompany, setSelectedCompany] = useState(null);
     const [loading, setLoading] = useState(true);
+    const [error, setError] = useState(null);
     const [filter, setFilter] = useState('all'); // all, eligible, growth
 
     useEffect(() => {
@@ -18,6 +19,7 @@ const JobOpportunities = () => {
 
     const fetchJobs = async () => {
         setLoading(true);
+        setError(null);
         try {
             const token = localStorage.getItem('token');
             const response = await axios.get('/api/jobs/match', {
@@ -29,13 +31,25 @@ const JobOpportunities = () => {
 
             // Fetch companies for this career path
             if (cp) {
-                const compRes = await axios.get(`/api/jobs/companies/by-skill?career_path=${encodeURIComponent(cp)}`, {
-                    headers: { Authorization: `Bearer ${token}` }
-                });
-                setHiringCompanies(compRes.data || []);
+                try {
+                    const compRes = await axios.get(`/api/jobs/companies/by-skill?career_path=${encodeURIComponent(cp)}`, {
+                        headers: { Authorization: `Bearer ${token}` }
+                    });
+                    setHiringCompanies(compRes.data || []);
+                } catch {
+                    // Non-critical, companies section is optional
+                    setHiringCompanies([]);
+                }
             }
         } catch (error) {
             console.error("Failed to fetch jobs/companies", error);
+            if (error.response?.status === 401) {
+                setError("Session expired. Please log in again.");
+            } else if (!error.response) {
+                setError("Cannot connect to server. Please ensure the backend is running.");
+            } else {
+                setError(error.response?.data?.message || "Unable to load job opportunities. Please try again.");
+            }
         } finally {
             setLoading(false);
         }
@@ -97,6 +111,20 @@ const JobOpportunities = () => {
                     <div className="flex flex-col items-center justify-center py-32 space-y-4">
                         <div className="w-12 h-12 border-4 border-indigo-200 border-t-indigo-600 rounded-full animate-spin"></div>
                         <p className="font-bold text-slate-400 uppercase tracking-widest text-xs">Architecting your opportunities...</p>
+                    </div>
+                ) : error ? (
+                    <div className="col-span-full py-24 text-center bg-white rounded-3xl border-2 border-dashed border-red-100 flex flex-col items-center justify-center gap-4">
+                        <div className="p-4 bg-red-50 rounded-full">
+                            <Search className="text-red-400" size={36} />
+                        </div>
+                        <h3 className="text-xl font-bold text-slate-800">Could not load jobs</h3>
+                        <p className="text-slate-500 font-medium max-w-sm">{error}</p>
+                        <button
+                            onClick={fetchJobs}
+                            className="mt-2 px-6 py-3 bg-indigo-600 text-white rounded-2xl font-bold text-sm hover:bg-indigo-700 transition-all"
+                        >
+                            Retry
+                        </button>
                     </div>
                 ) : (
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">

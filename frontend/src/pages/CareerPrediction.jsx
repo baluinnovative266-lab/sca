@@ -34,6 +34,7 @@ const InputField = ({ label, name, type = "number", value, onChange, max, icon: 
 const CareerPrediction = () => {
     const navigate = useNavigate();
     const [loading, setLoading] = useState(false);
+    const [error, setError] = useState(null);
     const [formData, setFormData] = useState({
         math_score: '',
         programming_score: '',
@@ -51,6 +52,7 @@ const CareerPrediction = () => {
     const handleSubmit = async (e) => {
         e.preventDefault();
         setLoading(true);
+        setError(null);
         try {
             const apiData = Object.fromEntries(
                 Object.entries(formData).map(([k, v]) => [k, parseInt(v) || 0])
@@ -64,9 +66,14 @@ const CareerPrediction = () => {
                 navigate('/results', { state: { predictionResults: result, inputData: apiData }, replace: true });
                 setLoading(false);
             }, 1800);
-        } catch (error) {
-            console.error("Prediction failed", error);
+        } catch (err) {
+            console.error("Prediction failed", err);
             setLoading(false);
+            if (!err.response) {
+                setError("Cannot connect to the server. Make sure the backend is running.");
+            } else {
+                setError(err.response?.data?.detail || "Career prediction failed. Please check your inputs and try again.");
+            }
         }
     };
 
@@ -160,7 +167,12 @@ const CareerPrediction = () => {
                         </div>
                     </div>
 
-                    <div className="pt-8 flex justify-center md:justify-end">
+                    <div className="pt-8 flex flex-col items-center md:items-end gap-4">
+                        {error && (
+                            <div className="w-full p-4 bg-red-50 border border-red-100 rounded-2xl text-red-600 font-semibold text-sm flex items-center gap-3">
+                                <span className="text-red-500">⚠</span> {error}
+                            </div>
+                        )}
                         <motion.button
                             whileHover={{ scale: 1.03, boxShadow: '0 8px 30px rgba(236,72,153,0.3)' }}
                             whileTap={{ scale: 0.97 }}

@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Boolean
+from sqlalchemy import Column, Integer, String, Boolean, JSON
 from app.core.database import Base
 from sqlalchemy.orm import relationship
 
@@ -13,6 +13,7 @@ class User(Base):
     avatar_url = Column(String, nullable=True)
     predicted_career = Column(String(255), nullable=True)
     age = Column(Integer, nullable=True)
+    extracted_skills = Column(JSON, nullable=True, default=list)
     
     # Two-Factor Authentication
     two_fa_enabled = Column(Boolean, default=False)

@@ -27,30 +27,49 @@ const Dashboard = () => {
 
     const fetchLocationName = async (lat, lng) => {
         try {
-            const response = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&zoom=10&addressdetails=1`);
+            // Using OSM Nominatim (free, no key required)
+            const response = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&zoom=10`);
             const data = await response.json();
-            if (data && data.display_name) {
-                // Try to get a shorter name (City, Country)
+
+            if (data && data.address) {
                 const addr = data.address;
-                const city = addr.city || addr.town || addr.village || addr.suburb || '';
-                const country = addr.country || '';
-                setLocationName(city && country ? `${city}, ${country}` : data.display_name);
+                // Prioritize city-level components
+                const city = addr.city || addr.town || addr.village || addr.municipality || addr.hamlet || addr.suburb;
+                // Prioritize state/region components
+                const region = addr.state || addr.region || addr.county || addr.district;
+                const country = addr.country;
+
+                let components = [];
+                if (city) components.push(city);
+                if (region) components.push(region);
+                if (!city && !region && country) components.push(country);
+
+                const finalName = components.join(', ');
+                setLocationName(finalName || data.display_name?.split(',')[0] || "Location Detected");
+            } else if (data && data.display_name) {
+                setLocationName(data.display_name.split(',')[0]);
+            } else {
+                setLocationName("Location Detected (Name unavailable)");
             }
         } catch (error) {
-            console.error("Reverse geocoding error:", error);
-            setLocationName("Location found (Name unavailable)");
+            console.error("Geocoding failed", error);
+            setLocationName("Location Detected (Offline)");
         }
     };
 
-    useEffect(() => {
+    const getLocation = () => {
         if (!navigator.geolocation) {
             setLocationStatus('denied');
             return;
         }
 
         setLocationStatus('loading');
+        // Non-blocking timeout to stop loading spinner
+        const geoTimer = setTimeout(() => setLocationStatus('denied'), 15000);
+
         navigator.geolocation.getCurrentPosition(
             (position) => {
+                clearTimeout(geoTimer);
                 setLocationStatus('active');
                 const newCoords = {
                     lat: position.coords.latitude,
@@ -60,11 +79,16 @@ const Dashboard = () => {
                 fetchLocationName(newCoords.lat, newCoords.lng);
             },
             (error) => {
+                clearTimeout(geoTimer);
                 console.error("Location error:", error);
                 setLocationStatus('denied');
             },
-            { enableHighAccuracy: true, timeout: 10000 }
+            { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
         );
+    };
+
+    useEffect(() => {
+        getLocation();
     }, []);
 
     const handleStartDemo = () => {
@@ -441,11 +465,17 @@ const Dashboard = () => {
                             <div className="space-y-6">
                                 {locationStatus === 'active' ? (
                                     <>
-                                        <div className="bg-gray-50 rounded-2xl p-6 border border-gray-100">
+                                        <div className="bg-gray-50 rounded-2xl p-6 border border-gray-100 relative overflow-hidden group">
                                             <p className="text-xs font-bold text-gray-400 uppercase mb-3 tracking-widest">Detected Address</p>
-                                            <p className="text-lg font-bold text-gray-800 leading-tight">
+                                            <p className="text-lg font-bold text-gray-800 leading-tight relative z-10">
                                                 {locationName || 'Resolving address...'}
                                             </p>
+                                            <button
+                                                onClick={getLocation}
+                                                className="mt-4 text-xs font-bold text-indigo-600 flex items-center gap-1 hover:underline"
+                                            >
+                                                <Navigation size={12} /> Refresh Location (High Accuracy)
+                                            </button>
                                         </div>
 
                                         <div className="grid grid-cols-2 gap-4">
@@ -473,15 +503,15 @@ const Dashboard = () => {
                                     <div className="bg-red-50/50 rounded-2xl p-6 border border-red-100">
                                         <p className="text-sm font-medium text-red-800 leading-relaxed mb-4">
                                             {locationStatus === 'denied'
-                                                ? "Location access is blocked. To see local opportunities, please click the lock icon in your browser's address bar and set Location to 'Allow'."
+                                                ? "Location access might be blocked or timed out. Please check your browser permission and try again."
                                                 : "We're currently determining your precise coordinates..."}
                                         </p>
                                         <div className="flex flex-col gap-2">
                                             <button
-                                                onClick={() => window.location.reload()}
+                                                onClick={getLocation}
                                                 className="w-full py-3 bg-red-600 text-white rounded-xl font-bold text-xs uppercase tracking-widest hover:bg-red-700 transition-all shadow-lg shadow-red-200"
                                             >
-                                                Reload & Try Again
+                                                Retry Location Check
                                             </button>
                                             <button
                                                 onClick={() => window.open('https://support.google.com/chrome/answer/142065', '_blank')}

@@ -12,43 +12,53 @@ router = APIRouter()
 @router.get("/match")
 def get_job_matches(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     """Fetch personalized job matches based on user career path and completed skills."""
-    
-    # Get user's active roadmap to find career path and completed phases
-    roadmap = db.query(Roadmap).filter(Roadmap.user_id == current_user.id, Roadmap.status == "active").first()
-    
-    if not roadmap:
-        return {"matches": [], "message": "No active roadmap found. Complete analysis first."}
-    
-    # Extract real skills from user record (these are saved during analysis)
-    # The user model has 'extracted_skills' as a JSON field
-    user_skills = current_user.extracted_skills or []
-    
-    # Fallback/Safety: If no skills extracted yet, use a baseline related to career path
-    if not user_skills:
-        user_skills = ["Python", "General Knowledge"]
-    
-    career_path = roadmap.career_path
-    
-    # Calculate current phase based on roadmap content
-    # If content has 'roadmap' key which is a list of phases
-    current_phase = 1
-    if roadmap.content and isinstance(roadmap.content.get('roadmap'), list):
-        phases = roadmap.content['roadmap']
-        # Find the highest phase number that has some progress or is completed
-        # For simplicity in this mock, we'll check how many phases have completed steps
-        completed_phases = 0
-        for p in phases:
-            steps = p.get('steps', [])
-            if any(s.get('is_completed') or s.get('status') == 'completed' for s in steps):
-                completed_phases += 1
-        current_phase = max(1, completed_phases)
+    try:
+        # Get user's active roadmap to find career path and completed phases
+        roadmap = db.query(Roadmap).filter(Roadmap.user_id == current_user.id, Roadmap.status == "active").first()
+        
+        if not roadmap:
+            return {"matches": [], "message": "No active roadmap found. Complete career analysis first."}
+        
+        # Extract real skills — extracted_skills is a JSON field on user (list of dicts or strings)
+        raw_skills = current_user.extracted_skills or []
+        if raw_skills and isinstance(raw_skills[0], dict):
+            user_skills = [s.get("name", "") for s in raw_skills if s.get("name")]
+        else:
+            user_skills = [s for s in raw_skills if isinstance(s, str)]
 
-    matches = job_service.get_matches(career_path, user_skills, current_phase)
-    
-    return {
-        "career_path": career_path,
-        "matches": matches
-    }
+        # Fallback baseline if no skills recorded yet
+        if not user_skills:
+            user_skills = ["Python", "General Knowledge"]
+        
+        career_path = roadmap.career_path
+        
+        # roadmap.content is a list of phase objects directly
+        current_phase = 1
+        content = roadmap.content
+        if isinstance(content, list):
+            phases = content
+        elif isinstance(content, dict):
+            phases = content.get("roadmap", content.get("phases", []))
+        else:
+            phases = []
+
+        if phases:
+            completed_phases = 0
+            for p in phases:
+                steps = p.get("steps", [])
+                if any(s.get("is_completed") or s.get("status") == "completed" for s in steps):
+                    completed_phases += 1
+            current_phase = max(1, completed_phases)
+
+        matches = job_service.get_matches(career_path, user_skills, current_phase)
+        
+        return {
+            "career_path": career_path,
+            "matches": matches
+        }
+    except Exception as e:
+        print(f"Error fetching job matches: {e}")
+        return {"matches": [], "career_path": "", "message": "Unable to load job matches. Please try again."}
 
 @router.get("/companies/by-skill")
 def get_companies_by_skill(career_path: str):

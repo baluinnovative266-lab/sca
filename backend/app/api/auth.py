@@ -68,18 +68,23 @@ class TwoFAVerify(BaseModel):
 
 @router.post("/register", response_model=Token)
 def register(user: UserCreate, db: Session = Depends(get_db)):
-    db_user = db.query(User).filter(User.email == user.email).first()
-    if db_user:
-        raise HTTPException(status_code=400, detail="Email already registered")
-    
-    hashed_password = get_password_hash(user.password)
-    new_user = User(email=user.email, hashed_password=hashed_password, full_name=user.full_name)
-    db.add(new_user)
-    db.commit()
-    db.refresh(new_user)
-    
-    access_token = create_access_token(data={"sub": new_user.email})
-    return {"access_token": access_token, "token_type": "bearer"}
+    try:
+        db_user = db.query(User).filter(User.email == user.email).first()
+        if db_user:
+            raise HTTPException(status_code=400, detail="Email already registered")
+        
+        hashed_password = get_password_hash(user.password)
+        new_user = User(email=user.email, hashed_password=hashed_password, full_name=user.full_name)
+        db.add(new_user)
+        db.commit()
+        db.refresh(new_user)
+        
+        access_token = create_access_token(data={"sub": new_user.email})
+        return {"access_token": access_token, "token_type": "bearer"}
+    except Exception as e:
+        print(f"REGISTER ERROR: {e}")
+        db.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
 
 @router.post("/login")
 def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):

@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { X, Target, Info, Lightbulb, Clock, CheckCircle2, ChevronRight, Github, ExternalLink, Code, Award } from 'lucide-react';
 import { PLATFORM_LOGOS } from '../utils/constants';
 
-const SidePanel = ({ isOpen, onClose, title, subtitle, data, type }) => {
+const SidePanel = ({ isOpen, onClose, title, subtitle, data, type, onToggleComplete }) => {
     const career = localStorage.getItem('predicted_career') || 'Software Engineer';
 
     const getFallbackLink = () => {

@@ -55,6 +55,8 @@ def predict_career(input_data: CareerInput, current_user: Optional[User] = Depen
             status="active"
         )
         db.add(new_roadmap)
+        # Persist extracted skills so job matcher can use them
+        current_user.extracted_skills = extracted_skills
         db.commit()
     
     career_match = confidence_score * 100
@@ -178,6 +180,18 @@ async def analyze_resume(file: UploadFile = File(...), current_user: Optional[Us
     
     if current_user:
         current_user.predicted_career = target_career
+        current_user.extracted_skills = extracted_skills
+        # Save/update roadmap for this user
+        existing_roadmap = db.query(Roadmap).filter(Roadmap.user_id == current_user.id, Roadmap.status == "active").first()
+        if existing_roadmap:
+            existing_roadmap.status = "archived"
+        new_roadmap = Roadmap(
+            user_id=current_user.id,
+            career_path=target_career,
+            content=roadmap,
+            status="active"
+        )
+        db.add(new_roadmap)
         db.commit()
     
     # Calculate mock scores based on extracted skills count

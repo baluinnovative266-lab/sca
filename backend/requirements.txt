@@ -11,3 +11,4 @@ python-jose[cryptography]
 argon2-cffi
 pypdf
 python-docx
+passlib[bcrypt]

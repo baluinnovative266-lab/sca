@@ -18,10 +18,13 @@ class CareerPredictor:
             else:
                 print(f"Model not found at {self.model_path}. Please train the model first.")
         except Exception as e:
+            import traceback
             print(f"Error loading model: {e}")
+            print(traceback.format_exc())
 
     def predict(self, input_data: dict):
         if self.model is None:
+            print("Model is None, returning Education Error")
             return {"predicted_career": "Education Error", "probabilities": []}
             
         try:
@@ -55,7 +58,9 @@ class CareerPredictor:
                 "probabilities": prob_list
             }
         except Exception as e:
+            import traceback
             print(f"Prediction error: {e}")
+            print(traceback.format_exc())
             return {"predicted_career": "Processing Error", "probabilities": []}
 
 career_predictor = CareerPredictor()

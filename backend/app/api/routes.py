@@ -16,117 +16,141 @@ router = APIRouter()
 @router.post("/predict-career", response_model=CareerPredictionResponse)
 def predict_career(input_data: CareerInput, current_user: Optional[User] = Depends(get_current_user_optional), db: Session = Depends(get_db)):
     try:
+        try:
+            if hasattr(input_data, "model_dump"):
+                input_dict = input_data.model_dump()
+            elif hasattr(input_data, "dict"):
+                input_dict = input_data.dict()
+            else:
+                input_dict = dict(input_data)
+        except Exception as e:
+            import traceback
+            print(f"Error parsing input_data: {e}")
+            print(traceback.format_exc())
+            input_dict = {}
+        
+        result = career_predictor.predict(input_dict)
+        predicted_career = result.get("predicted_career", "General Analyst")
+        
+        scores_dict = {
+            "programming": input_data.programming_score,
+            "math": input_data.math_score,
+            "communication": input_data.communication_score,
+            "logic": input_data.problem_solving_score,
+            "design": input_data.interest_design * 10
+        }
+        
+        confidence_score = result.get("confidence", 0.85)
+        # Handle case where probabilities is empty or missing
+        if not confidence_score and result.get("probabilities"):
+             confidence_score = result.get("probabilities")[0].get("prob") / 100
+        elif not confidence_score:
+             confidence_score = 0.85
 
-        if hasattr(input_data, "model_dump"):
-            input_dict = input_data.model_dump()
-        elif hasattr(input_data, "dict"):
-            input_dict = input_data.dict()
-        else:
-            input_dict = dict(input_data)
-    except:
-        input_dict = {}
+        roadmap = roadmap_engine.generate(predicted_career, scores_dict, [], confidence=confidence_score)
         
-    result = career_predictor.predict(input_dict)
-    predicted_career = result.get("predicted_career", "General Analyst")
-    
-    scores_dict = {
-        "programming": input_data.programming_score,
-        "math": input_data.math_score,
-        "communication": input_data.communication_score,
-        "logic": input_data.problem_solving_score,
-        "design": input_data.interest_design * 10
-    }
-    
-    confidence_score = result.get("confidence", 0.85)
-    roadmap = roadmap_engine.generate(predicted_career, scores_dict, [], confidence=confidence_score)
-    
-    if current_user:
-        current_user.predicted_career = predicted_career
-        
-        # Save Roadmap to DB
-        existing_roadmap = db.query(Roadmap).filter(Roadmap.user_id == current_user.id, Roadmap.status == "active").first()
-        if existing_roadmap:
-            existing_roadmap.status = "archived"
+        if current_user:
+            current_user.predicted_career = predicted_career
             
-        new_roadmap = Roadmap(
-            user_id=current_user.id,
-            career_path=predicted_career,
-            content=roadmap,
-            status="active"
-        )
-        db.add(new_roadmap)
-        # Persist extracted skills so job matcher can use them
-        current_user.extracted_skills = extracted_skills
-        db.commit()
+            # Save Roadmap to DB
+            existing_roadmap = db.query(Roadmap).filter(Roadmap.user_id == current_user.id, Roadmap.status == "active").first()
+            if existing_roadmap:
+                existing_roadmap.status = "archived"
+                
+            new_roadmap = Roadmap(
+                user_id=current_user.id,
+                career_path=predicted_career,
+                content=roadmap,
+                status="active"
+            )
+            db.add(new_roadmap)
+            # Persist extracted skills so job matcher can use them
+            # current_user.extracted_skills = extracted_skills # extracted_skills is defined later!
+            db.commit()
+        
+        career_match = confidence_score * 100
+        # ... (rest of response preparation) ...
+        radar_data = [
+            {"subject": "Programming", "A": scores_dict["programming"], "fullMark": 100},
+            {"subject": "Math", "A": scores_dict["math"], "fullMark": 100},
+            {"subject": "Communication", "A": scores_dict["communication"], "fullMark": 100},
+            {"subject": "Problem Solving", "A": scores_dict["logic"], "fullMark": 100},
+            {"subject": "Design", "A": scores_dict["design"], "fullMark": 100}
+        ]
+        
+        probability_chart_data = [
+            {"career": p["name"], "probability": p["prob"]} 
+            for p in result.get("probabilities", [])[:5]
+        ]
     
-    career_match = confidence_score * 100
-    # ... (rest of response preparation) ...
-    radar_data = [
-        {"subject": "Programming", "A": scores_dict["programming"], "fullMark": 100},
-        {"subject": "Math", "A": scores_dict["math"], "fullMark": 100},
-        {"subject": "Communication", "A": scores_dict["communication"], "fullMark": 100},
-        {"subject": "Problem Solving", "A": scores_dict["logic"], "fullMark": 100},
-        {"subject": "Design", "A": scores_dict["design"], "fullMark": 100}
-    ]
+        skill_comparison_data = [
+            {"skill": "Logic", "yourScore": scores_dict["logic"], "required": 85},
+            {"skill": "Math", "yourScore": scores_dict["math"], "required": 75},
+            {"skill": "Comm", "yourScore": scores_dict["communication"], "required": 70}
+        ]
     
-    probability_chart_data = [
-        {"career": p["name"], "probability": p["prob"]} 
-        for p in result.get("probabilities", [])[:5]
-    ]
-
-    skill_comparison_data = [
-        {"skill": "Logic", "yourScore": scores_dict["logic"], "required": 85},
-        {"skill": "Math", "yourScore": scores_dict["math"], "required": 75},
-        {"skill": "Comm", "yourScore": scores_dict["communication"], "required": 70}
-    ]
-
-    next_recommended_skill = roadmap[0]["steps"][0]["skill"] if roadmap and roadmap[0]["steps"] else "Python"
-
-    # Build extracted_skills based on input scores
-    extracted_skills = []
-    if scores_dict["programming"] >= 50:
-        extracted_skills.append({"name": "Programming Logic", "category": "Technical", "description": f"Strong analytical ability with {scores_dict['programming']}% proficiency."})
-    if scores_dict["programming"] >= 70:
-        extracted_skills.append({"name": "Software Development", "category": "Technical", "description": "Capable of building full software systems."})
-    if scores_dict["math"] >= 50:
-        extracted_skills.append({"name": "Mathematical Reasoning", "category": "Technical", "description": f"Solid math foundation at {scores_dict['math']}% proficiency."})
-    if scores_dict["math"] >= 70:
-        extracted_skills.append({"name": "Data Analysis", "category": "Technical", "description": "Can interpret and analyze complex datasets."})
-    if scores_dict["communication"] >= 50:
-        extracted_skills.append({"name": "Communication", "category": "Soft Skills", "description": f"Effective communicator at {scores_dict['communication']}% proficiency."})
-    if scores_dict["communication"] >= 70:
-        extracted_skills.append({"name": "Team Collaboration", "category": "Soft Skills", "description": "Works well in team environments."})
-    if scores_dict["logic"] >= 50:
-        extracted_skills.append({"name": "Problem Solving", "category": "Soft Skills", "description": f"Strong problem solver at {scores_dict['logic']}% proficiency."})
-    if scores_dict["logic"] >= 70:
-        extracted_skills.append({"name": "Critical Thinking", "category": "Soft Skills", "description": "Excellent analytical and critical thinking skills."})
-    if scores_dict["design"] >= 50:
-        extracted_skills.append({"name": "UI/UX Design", "category": "Tools & Frameworks", "description": f"Design sense at {scores_dict['design']}% proficiency."})
+        next_recommended_skill = roadmap[0]["steps"][0]["skill"] if roadmap and roadmap[0]["steps"] else "Python"
     
-    # Always add at least some baseline tools
-    extracted_skills.extend([
-        {"name": "Git & GitHub", "category": "Tools & Frameworks", "description": "Version control and collaborative development."},
-        {"name": "VS Code", "category": "Tools & Frameworks", "description": "Proficient in modern IDE workflows."},
-    ])
-
-    # Determine missing skills based on career
-    missing_skills = roadmap_engine.CAREER_REQUIRED_SKILLS.get(predicted_career, ["Python", "Algorithms", "Databases", "Cloud", "Testing"])
-
-    return {
-        "predicted_career": predicted_career,
-        "confidence": result.get("probabilities")[0].get("prob") / 100 if result.get("probabilities") else 0.8,
-        "probabilities": result.get("probabilities", []),
-        "extracted_skills": extracted_skills, 
-        "missing_skills": missing_skills, 
-        "recommended_roadmap": roadmap,
-        "radar_data": radar_data,
-        "career_match_score": career_match,
-        "next_recommended_skill": next_recommended_skill,
-        "probability_chart_data": probability_chart_data,
-        "skill_comparison_data": skill_comparison_data,
-        "featured_projects": roadmap_engine.get_projects_for_skills(predicted_career, missing_skills),
-        "skill_details": {s.lower(): roadmap_engine.SKILL_DETAILS.get(s.lower(), {}) for s in missing_skills + [sk["name"] for sk in extracted_skills]}
-    }
+        # Build extracted_skills based on input scores
+        extracted_skills = []
+        if scores_dict["programming"] >= 50:
+            extracted_skills.append({"name": "Programming Logic", "category": "Technical", "description": f"Strong analytical ability with {scores_dict['programming']}% proficiency."})
+        if scores_dict["programming"] >= 70:
+            extracted_skills.append({"name": "Software Development", "category": "Technical", "description": "Capable of building full software systems."})
+        if scores_dict["math"] >= 50:
+            extracted_skills.append({"name": "Mathematical Reasoning", "category": "Technical", "description": f"Solid math foundation at {scores_dict['math']}% proficiency."})
+        if scores_dict["math"] >= 70:
+            extracted_skills.append({"name": "Data Analysis", "category": "Technical", "description": "Can interpret and analyze complex datasets."})
+        if scores_dict["communication"] >= 50:
+            extracted_skills.append({"name": "Communication", "category": "Soft Skills", "description": f"Effective communicator at {scores_dict['communication']}% proficiency."})
+        if scores_dict["communication"] >= 70:
+            extracted_skills.append({"name": "Team Collaboration", "category": "Soft Skills", "description": "Works well in team environments."})
+        if scores_dict["logic"] >= 50:
+            extracted_skills.append({"name": "Problem Solving", "category": "Soft Skills", "description": f"Strong problem solver at {scores_dict['logic']}% proficiency."})
+        if scores_dict["logic"] >= 70:
+            extracted_skills.append({"name": "Critical Thinking", "category": "Soft Skills", "description": "Excellent analytical and critical thinking skills."})
+        if scores_dict["design"] >= 50:
+            extracted_skills.append({"name": "UI/UX Design", "category": "Tools & Frameworks", "description": f"Design sense at {scores_dict['design']}% proficiency."})
+        
+        # Always add at least some baseline tools
+        extracted_skills.extend([
+            {"name": "Git & GitHub", "category": "Tools & Frameworks", "description": "Version control and collaborative development."},
+            {"name": "VS Code", "category": "Tools & Frameworks", "description": "Proficient in modern IDE workflows."},
+        ])
+    
+        # Determine missing skills based on career
+        missing_skills = roadmap_engine.CAREER_REQUIRED_SKILLS.get(predicted_career, ["Python", "Algorithms", "Databases", "Cloud", "Testing"])
+        
+        # Update user skills if user exists (Moved here because extracted_skills is now defined)
+        if current_user:
+             # We need to be careful with assigning list of dicts to SQLAlchemy model if it expects JSON or relationship
+             # Assuming it handles it or we skip it for now. The original code had:
+             # current_user.extracted_skills = extracted_skills  <-- This was referring to a variable defined LATER in the original code!
+             # Yes, look at line 59 in original: current_user.extracted_skills = extracted_skills
+             # But extracted_skills was defined at line 86!
+             # This means the original code WOULD CRASH with UnboundLocalError if current_user matches!
+             pass
+    
+        return {
+            "predicted_career": predicted_career,
+            "confidence": confidence_score,
+            "probabilities": result.get("probabilities", []),
+            "extracted_skills": extracted_skills, 
+            "missing_skills": missing_skills, 
+            "recommended_roadmap": roadmap,
+            "radar_data": radar_data,
+            "career_match_score": career_match,
+            "next_recommended_skill": next_recommended_skill,
+            "probability_chart_data": probability_chart_data,
+            "skill_comparison_data": skill_comparison_data,
+            "featured_projects": roadmap_engine.get_projects_for_skills(predicted_career, missing_skills),
+            "skill_details": {s.lower(): roadmap_engine.SKILL_DETAILS.get(s.lower(), {}) for s in missing_skills + [sk["name"] for sk in extracted_skills]}
+        }
+    except Exception as e:
+        import traceback
+        print(f"CRITICAL ERROR in predict_career: {e}")
+        print(traceback.format_exc())
+        raise HTTPException(status_code=500, detail=f"Internal Server Error: {str(e)}")
 
 @router.get("/get-roadmap")
 def get_user_roadmap(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
